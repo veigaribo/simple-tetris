@@ -1,6 +1,8 @@
 #include <iostream>
 #include <pthread.h>
+#include <termios.h>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 using namespace std;
@@ -11,6 +13,7 @@ const int field_height = 18;
 unsigned char *field = nullptr;
 
 char drawing_buffer[field_width * field_height];
+struct termios orig_termios;
 
 // left, bottom, right, rotate (z)
 bool inputs[4];
@@ -45,9 +48,26 @@ bool DoesPieceFit(int tetromino_i, int px, int py, int r) {
   return true;
 }
 
+// enable & disable reading the terminal byte-by-byte (instead of by line)
+// https://viewsourcecode.org/snaptoken/kilo/02.enteringRawMode.html
+
+void DisableRawMode() { tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios); }
+
+void EnableTtyRawMode() {
+  tcgetattr(STDIN_FILENO, &orig_termios);
+  atexit(DisableRawMode);
+
+  struct termios raw = orig_termios;
+
+  raw.c_lflag &= ~(ECHO | ICANON);
+
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+}
+
 void HandleInput() {
   while (true) {
-    char c = getchar();
+    char c;
+    read(STDIN_FILENO, &c, 1);
 
     switch (c) {
     case 'a':
@@ -67,6 +87,8 @@ void HandleInput() {
 }
 
 int main() {
+  EnableTtyRawMode();
+
   // create assets
   tetromino[0].append(L"..X.");
   tetromino[0].append(L"..X.");
@@ -263,8 +285,6 @@ int main() {
 
         drawing_buffer[position] = " ABCDEFGH=#"[current_tile];
       }
-
-      cout << endl;
     }
 
     // current piece
@@ -280,8 +300,6 @@ int main() {
           drawing_buffer[screen_position] = " ABCDEFGH=#"[current_piece + 1];
         }
       }
-
-      cout << endl;
     }
 
     cout << "\x1B[2J\x1B[H";
